@@ -17,6 +17,7 @@ impl From<std::io::Error> for Error {
 
 #[derive(Default)]
 struct State {
+    // We need the top 3 values, but leave space for an extra value to be sorted in with them.
     maxes: [u64; 4],
     acc: u64,
 }
@@ -32,6 +33,8 @@ impl State {
 
     fn next(self) -> State {
         let State { mut maxes, acc } = self;
+
+        // Always in ascending order. Replace the lowest value and sort again.
         maxes[0] = acc;
         maxes.sort();
 
@@ -50,7 +53,10 @@ pub fn run() {
             }
         });
 
+    // Sneaky .next() to roll over the last accumulator.
     let State { maxes, .. } = r.expect("Processing input").next();
+
+    // Discard the lowest of the 4, it was just left over from the last iteration.
     let [_, a, b, c] = maxes;
     let max = a + b + c;
     println!("{}", max);
