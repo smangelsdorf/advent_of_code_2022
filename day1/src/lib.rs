@@ -17,7 +17,7 @@ impl From<std::io::Error> for Error {
 
 #[derive(Default)]
 struct State {
-    max: u64,
+    maxes: [u64; 4],
     acc: u64,
 }
 
@@ -31,11 +31,11 @@ impl State {
     }
 
     fn next(self) -> State {
-        let State { max, acc } = self;
-        State {
-            max: max.max(acc),
-            acc: 0,
-        }
+        let State { mut maxes, acc } = self;
+        maxes[0] = acc;
+        maxes.sort();
+
+        State { maxes, acc: 0 }
     }
 }
 
@@ -50,7 +50,9 @@ pub fn run() {
             }
         });
 
-    let State { max, .. } = r.expect("Processing input").next();
+    let State { maxes, .. } = r.expect("Processing input").next();
+    let [_, a, b, c] = maxes;
+    let max = a + b + c;
     println!("{}", max);
 }
 
