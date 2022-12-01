@@ -41,9 +41,9 @@ impl State {
         State { maxes, acc: 0 }
     }
 
-    fn maxes(&self) -> (u64, u64, u64) {
+    fn finish(self) -> (u64, u64, u64) {
         // Discard the lowest of the 4, it was just left over from the last iteration.
-        let [_, a, b, c] = self.maxes;
+        let [_, a, b, c] = self.next().maxes;
         (a, b, c)
     }
 }
@@ -59,10 +59,7 @@ pub fn run() {
             }
         });
 
-    // Sneaky .next() to roll over the last accumulator.
-    let state = r.expect("Processing input").next();
-
-    let (a, b, c) = state.maxes();
+    let (a, b, c) = r.expect("Processing input").finish();
     let max = a + b + c;
     println!("{}", max);
 }
