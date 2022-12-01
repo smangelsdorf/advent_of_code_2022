@@ -63,7 +63,7 @@ pub fn run() {
 }
 
 fn parse(line: &str) -> Result<Input, Error> {
-    if line == "" {
+    if line.is_empty() {
         Ok(Input::Blank)
     } else if let Ok(n) = u64::from_str_radix(line, 10) {
         Ok(Input::Number(n))
