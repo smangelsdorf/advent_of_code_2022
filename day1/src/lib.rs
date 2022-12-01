@@ -24,10 +24,10 @@ struct State {
 
 impl State {
     fn add(self, n: u64) -> State {
-        let State { acc, .. } = self;
+        let State { maxes, acc } = self;
         State {
+            maxes,
             acc: acc + n,
-            ..self
         }
     }
 
