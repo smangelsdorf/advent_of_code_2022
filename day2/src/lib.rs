@@ -26,9 +26,6 @@ impl From<&str> for Shape {
             "A" => Rock,
             "B" => Paper,
             "C" => Scissors,
-            "X" => Rock,
-            "Y" => Paper,
-            "Z" => Scissors,
             _ => panic!("invalid input"),
         }
     }
@@ -64,28 +61,41 @@ impl From<Outcome> for Points {
     }
 }
 
+impl From<&str> for Outcome {
+    fn from(s: &str) -> Outcome {
+        use Outcome::*;
+
+        match s {
+            "X" => ElfWin,
+            "Y" => Draw,
+            "Z" => MeWin,
+            _ => panic!("invalid input"),
+        }
+    }
+}
+
 struct Round {
     elf: Shape,
-    me: Shape,
+    outcome: Outcome,
 }
 
 impl Round {
-    fn outcome(&self) -> Outcome {
+    fn my_shape(&self) -> Shape {
         use {Outcome::*, Shape::*};
 
-        let Round { elf, me } = self;
+        let Round { elf, outcome } = self;
 
-        match (elf, me) {
-            (Rock, Scissors) | (Scissors, Paper) | (Paper, Rock) => ElfWin,
-            (Rock, Rock) | (Scissors, Scissors) | (Paper, Paper) => Draw,
-            (Rock, Paper) | (Scissors, Rock) | (Paper, Scissors) => MeWin,
+        match (elf, outcome) {
+            (Rock, ElfWin) | (Scissors, Draw) | (Paper, MeWin) => Scissors,
+            (Scissors, ElfWin) | (Paper, Draw) | (Rock, MeWin) => Paper,
+            (Paper, ElfWin) | (Rock, Draw) | (Scissors, MeWin) => Rock,
         }
     }
 }
 
 impl From<Round> for Points {
     fn from(r: Round) -> Points {
-        Points::from(r.outcome()) + Points::from(r.me)
+        Points::from(r.my_shape()) + Points::from(r.outcome)
     }
 }
 
@@ -104,9 +114,9 @@ where
     S: AsRef<str> + Debug,
 {
     match line.as_ref().split_once(" ") {
-        Some((elf_string, me_string)) => Round {
+        Some((elf_string, outcome_string)) => Round {
             elf: elf_string.into(),
-            me: me_string.into(),
+            outcome: outcome_string.into(),
         },
         None => panic!("invalid line: {:?}", line),
     }
