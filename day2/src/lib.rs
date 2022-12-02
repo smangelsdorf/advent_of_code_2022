@@ -109,6 +109,7 @@ pub fn run() {
     println!("score: {}", score.0);
 }
 
+// We get a `String` here, but this is a way to be generic across `String` and `&str`.
 fn parse_line<S>(line: S) -> Round
 where
     S: AsRef<str> + Debug,
