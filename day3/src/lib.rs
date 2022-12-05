@@ -1,13 +1,36 @@
 use std::collections::HashSet;
 
+use itertools::Itertools;
+
 struct Rucksack {
     first: HashSet<u8>,
     second: HashSet<u8>,
 }
 
 impl Rucksack {
+    #[allow(dead_code)]
     fn common(self) -> Option<u8> {
         self.first.intersection(&self.second).next().copied()
+    }
+
+    fn all(&self) -> HashSet<u8> {
+        self.first.union(&self.second).copied().collect()
+    }
+
+    fn multi_way_common<I>(sacks: I) -> Option<u8>
+    where
+        I: IntoIterator<Item = Rucksack>,
+    {
+        let mut sacks = sacks.into_iter();
+        let init = sacks.next().expect("expected at least one rucksack").all();
+
+        sacks
+            .fold(init, |acc, s| {
+                acc.intersection(&s.all()).copied().collect::<HashSet<_>>()
+            })
+            .iter()
+            .next()
+            .copied()
     }
 }
 
@@ -43,8 +66,11 @@ pub fn run() {
         .lines()
         .map(Result::unwrap)
         .map(Rucksack::from)
-        .filter_map(Rucksack::common)
+        .chunks(3)
+        .into_iter()
+        .filter_map(Rucksack::multi_way_common)
         .map(priority)
         .sum();
+
     println!("{}", value);
 }
