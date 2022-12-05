@@ -7,8 +7,8 @@ impl Ranges {
     fn overlapping(&self) -> bool {
         let Ranges(r0, r1) = self;
 
-        (r0.contains(r1.start()) && r0.contains(r1.end()))
-            || (r1.contains(r0.start()) && r1.contains(r0.end()))
+        (r0.contains(r1.start()) || r0.contains(r1.end()))
+            || (r1.contains(r0.start()) || r1.contains(r0.end()))
     }
 }
 
