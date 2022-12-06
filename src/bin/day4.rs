@@ -32,7 +32,7 @@ fn line_parser(input: &str) -> IResult<&str, Ranges> {
     Ok((input, Ranges(a, b)))
 }
 
-pub fn run() {
+pub fn main() {
     let n: usize = std::io::stdin()
         .lines()
         .map(Result::unwrap)

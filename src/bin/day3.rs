@@ -61,7 +61,7 @@ fn priority(b: u8) -> u64 {
     u64::from(value)
 }
 
-pub fn run() {
+pub fn main() {
     let value: u64 = std::io::stdin()
         .lines()
         .map(Result::unwrap)

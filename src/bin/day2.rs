@@ -99,7 +99,7 @@ impl From<Round> for Points {
     }
 }
 
-pub fn run() {
+pub fn main() {
     let score: Points = std::io::stdin()
         .lines()
         .map_while(Result::ok)

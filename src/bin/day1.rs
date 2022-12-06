@@ -48,7 +48,7 @@ impl State {
     }
 }
 
-pub fn run() {
+pub fn main() {
     let r: Result<_, Error> = std::io::stdin()
         .lines()
         .try_fold(State::default(), |state, item| {

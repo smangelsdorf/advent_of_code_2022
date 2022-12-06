@@ -3,8 +3,8 @@
 I might do Advent of Code this year. I've never committed to it before.
 
 If you want to avoid spoilers, don't read my solutions until you've attempted it
-yourself. If I don't end up pushing any solutions here, it's because I'm
-helping you avoid spoilers, and definitely not laziness.
+yourself. If I stop pushing solutions part way through, it's because I'm helping
+you avoid spoilers, and definitely not laziness.
 
 ## License
 
