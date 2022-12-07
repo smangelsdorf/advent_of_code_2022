@@ -31,7 +31,7 @@ impl Ship {
         }
 
         if let Some(to) = self.stacks.get_mut(&m.to) {
-            to.extend(v.into_iter());
+            to.extend(v.into_iter().rev());
         }
     }
 
