@@ -146,63 +146,57 @@ mod parser {
     }
 
     #[cfg(test)]
-    pub(super) use self::moves as parse_moves;
-    #[cfg(test)]
-    pub(super) use self::ship as parse_ship;
-}
+    mod tests {
+        use super::parser::*;
 
-#[cfg(test)]
-mod tests {
-    use super::parser::*;
+        #[test]
+        fn test_parse() {
+            let input = "[A] [B]     [C] [D]\n\
+                         [E] [F] [G] [H] [I]\n\
+                          1   2   3   4   5\n\n";
 
-    #[test]
-    fn test_parse() {
-        let input = "[A] [B]     [C] [D]\n\
-                     [E] [F] [G] [H] [I]\n\
-                      1   2   3   4   5\n\n";
+            let (_, ship) = ship(input).unwrap();
 
-        let (_, ship) = parse_ship(input).unwrap();
+            assert_eq!(
+                ship,
+                Ship {
+                    stacks: [
+                        (1, vec![Crate('E'), Crate('A')]),
+                        (2, vec![Crate('F'), Crate('B')]),
+                        (3, vec![Crate('G')]),
+                        (4, vec![Crate('H'), Crate('C')]),
+                        (5, vec![Crate('I'), Crate('D')]),
+                    ]
+                    .into()
+                }
+            );
 
-        assert_eq!(
-            ship,
-            Ship {
-                names: vec![1, 2, 3, 4, 5],
-                stacks: [
-                    (1, vec![Crate('E'), Crate('A')]),
-                    (2, vec![Crate('F'), Crate('B')]),
-                    (3, vec![Crate('G')]),
-                    (4, vec![Crate('H'), Crate('C')]),
-                    (5, vec![Crate('I'), Crate('D')]),
+            let input = "move 3 from 2 to 1\n\
+                         move 2 from 1 to 4\n\
+                         move 6 from 0 to 100\n";
+
+            let (_, moves) = moves(input).unwrap();
+
+            assert_eq!(
+                moves,
+                vec![
+                    Move {
+                        count: 3,
+                        from: 2,
+                        to: 1
+                    },
+                    Move {
+                        count: 2,
+                        from: 1,
+                        to: 4
+                    },
+                    Move {
+                        count: 6,
+                        from: 0,
+                        to: 100
+                    },
                 ]
-                .into()
-            }
-        );
-
-        let input = "move 3 from 2 to 1\n\
-                     move 2 from 1 to 4\n\
-                     move 6 from 0 to 100\n";
-
-        let (_, moves) = parse_moves(input).unwrap();
-
-        assert_eq!(
-            moves,
-            vec![
-                Move {
-                    count: 3,
-                    from: 2,
-                    to: 1
-                },
-                Move {
-                    count: 2,
-                    from: 1,
-                    to: 4
-                },
-                Move {
-                    count: 6,
-                    from: 0,
-                    to: 100
-                },
-            ]
-        );
+            );
+        }
     }
 }
