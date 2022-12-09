@@ -141,13 +141,15 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut total: usize = 0;
+    let mut sizes = vec![];
     root.visit_recursive_sizes(&mut |size| {
-        if size <= 100000 {
-            total += size
-        }
+        sizes.push(size);
     });
-    println!("{}", total);
+    let root_size = sizes.iter().rev().next().unwrap();
+    let target = 30000000 - (70000000 - root_size);
+    let found = sizes.into_iter().filter(|n| *n > target).min().unwrap();
+
+    println!("{}", found);
 
     Ok(())
 }
