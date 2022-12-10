@@ -35,16 +35,34 @@ impl Position {
     }
 }
 
-#[derive(Eq, PartialEq, Debug, Default)]
+#[derive(Eq, PartialEq, Debug)]
 struct Rope {
-    head: Position,
-    tail: Position,
+    parts: Vec<Position>,
 }
 
 impl Rope {
+    fn new(parts: usize) -> Rope {
+        assert!(parts >= 2);
+        let parts = std::iter::repeat(Position::default()).take(parts).collect();
+        Rope { parts }
+    }
+
     fn step(&mut self, direction: Direction) {
-        self.head.step(direction);
-        self.tail.follow(&self.head);
+        let mut iter = self.parts.iter_mut();
+        let mut prev = {
+            let head: &mut Position = iter.next().unwrap();
+            head.step(direction);
+            head.clone()
+        };
+
+        for part in iter {
+            part.follow(&prev);
+            prev = *part;
+        }
+    }
+
+    fn tail(&self) -> Position {
+        *self.parts.iter().last().unwrap()
     }
 }
 
@@ -68,13 +86,13 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let moves = nom_parse_to_owned(parser::input_parser, &buffer)?;
 
-    let mut rope = Rope::default();
+    let mut rope = Rope::new(10);
     let mut visited: HashSet<Position> = HashSet::default();
 
     for Move { direction, count } in moves {
         for _i in 0..count {
             rope.step(direction);
-            visited.insert(rope.tail);
+            visited.insert(rope.tail());
         }
     }
 
