@@ -1,4 +1,5 @@
 use aoc::parser::read_from_stdin_and_parse;
+use itertools::Itertools;
 
 #[derive(Copy, Clone, Debug)]
 enum Instruction {
@@ -71,15 +72,22 @@ where
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let instructions = read_from_stdin_and_parse(parser::parse_input)?;
 
-    let sum: i64 = Execution::new(instructions.into_iter())
-        .enumerate()
-        .skip(19)
-        .step_by(40)
-        .take(6)
-        .map(|(i, State(n))| (i as i64 + 1) * n)
-        .sum();
+    let iter = Execution::new(instructions.into_iter())
+        .zip((0..=39).cycle())
+        .chunks(40);
 
-    println!("{}", sum);
+    for states in &iter {
+        for (state, pos) in states {
+            let ch = if (pos as i64 - state.0).abs() < 2 {
+                '#'
+            } else {
+                '.'
+            };
+
+            print!("{}", ch);
+        }
+        println!();
+    }
 
     Ok(())
 }
