@@ -1,3 +1,5 @@
+use std::io::BufRead;
+
 enum Input {
     Number(u64),
     Blank,
@@ -49,15 +51,17 @@ impl State {
 }
 
 pub fn main() {
-    let r: Result<_, Error> = std::io::stdin()
-        .lines()
-        .try_fold(State::default(), |state, item| {
-            let s = item?;
-            match parse(&s)? {
-                Input::Number(n) => Ok(state.add(n)),
-                Input::Blank => Ok(state.next()),
-            }
-        });
+    let r: Result<_, Error> =
+        std::io::stdin()
+            .lock()
+            .lines()
+            .try_fold(State::default(), |state, item| {
+                let s = item?;
+                match parse(&s)? {
+                    Input::Number(n) => Ok(state.add(n)),
+                    Input::Blank => Ok(state.next()),
+                }
+            });
 
     let (a, b, c) = r.expect("Processing input").finish();
     let max = a + b + c;

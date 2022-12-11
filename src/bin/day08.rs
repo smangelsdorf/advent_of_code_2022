@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::convert::identity;
+use std::io::BufRead;
 use std::iter::from_fn;
 
 // Accumulate the most recent tree of each size in a map, use to update the scores.
@@ -22,6 +23,7 @@ fn update_visible(
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut trees: Vec<Vec<(u8, usize)>> = std::io::stdin()
+        .lock()
         .lines()
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()

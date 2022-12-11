@@ -1,3 +1,5 @@
+use std::io::BufRead;
+
 use nom::{bytes::complete::tag, character::complete::digit1, combinator::map_res, IResult};
 
 type Range = std::ops::RangeInclusive<u64>;
@@ -34,6 +36,7 @@ fn line_parser(input: &str) -> IResult<&str, Ranges> {
 
 pub fn main() {
     let n: usize = std::io::stdin()
+        .lock()
         .lines()
         .map(Result::unwrap)
         .map(|s| line_parser(&s).map(|(_input, r)| r).expect("valid parse"))

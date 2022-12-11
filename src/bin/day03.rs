@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::io::BufRead;
 
 use itertools::Itertools;
 
@@ -63,6 +64,7 @@ fn priority(b: u8) -> u64 {
 
 pub fn main() {
     let value: u64 = std::io::stdin()
+        .lock()
         .lines()
         .map(Result::unwrap)
         .map(Rucksack::from)

@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::io::BufRead;
 use std::ops::Add;
 
 #[derive(Default)]
@@ -101,6 +102,7 @@ impl From<Round> for Points {
 
 pub fn main() {
     let score: Points = std::io::stdin()
+        .lock()
         .lines()
         .map_while(Result::ok)
         .map(parse_line)
