@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use nom::bytes::complete::tag;
 use nom::character::complete::digit1;
-use nom::combinator::{map_res, recognize, opt};
+use nom::combinator::{map_res, opt, recognize};
 use nom::sequence::preceded;
 use nom::{Finish, IResult, Parser};
 
@@ -12,7 +12,10 @@ pub fn base10_numeric<N>(input: &str) -> IResult<&str, N>
 where
     N: Sum<N> + FromStr,
 {
-    map_res(recognize(preceded(opt(tag("-")), digit1)), |s| N::from_str(s)).parse(input)
+    map_res(recognize(preceded(opt(tag("-")), digit1)), |s| {
+        N::from_str(s)
+    })
+    .parse(input)
 }
 
 pub fn nom_error_to_owned<I>(e: nom::error::Error<&I>) -> nom::error::Error<I::Owned>

@@ -1,8 +1,18 @@
 use std::collections::BTreeMap;
 
-#[derive(Debug, Eq, PartialEq)]
+use aoc::parser::read_from_stdin_and_parse;
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 struct Item {
     worry: u64,
+}
+
+impl Item {
+    fn relieve(self) -> Item {
+        Item {
+            worry: self.worry / 3,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -10,15 +20,41 @@ struct Monkey {
     items: Vec<Item>,
     operation: Operation,
     action: ThrowAction,
+    inspections: u64,
 }
 
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
+impl Monkey {
+    // I like the symmetry.
+    #[allow(dead_code)]
+    fn get(monkeys: &BTreeMap<MonkeyId, Monkey>, id: MonkeyId) -> &Monkey {
+        monkeys.get(&id).expect("monkey id should exist")
+    }
+
+    fn get_mut(monkeys: &mut BTreeMap<MonkeyId, Monkey>, id: MonkeyId) -> &mut Monkey {
+        monkeys.get_mut(&id).expect("monkey id should exist")
+    }
+
+    fn catch(&mut self, item: Item) {
+        self.items.push(item);
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
 struct MonkeyId(u64);
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 enum Operand {
     Old,
     Const(u64),
+}
+
+impl Operand {
+    fn of(self, item: Item) -> u64 {
+        match self {
+            Operand::Old => item.worry,
+            Operand::Const(n) => n,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -33,19 +69,102 @@ struct Operation {
     operator: Operator,
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum Test {
-    DivisibleBy(i64),
+impl Operation {
+    fn apply(&self, item: Item) -> Item {
+        let [lhs, rhs] = self.operands;
+        let lhs = lhs.of(item);
+        let rhs = rhs.of(item);
+
+        match self.operator {
+            Operator::Add => Item { worry: lhs + rhs },
+            Operator::Mul => Item { worry: lhs * rhs },
+        }
+    }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+enum Test {
+    DivisibleBy(u64),
+}
+
+impl Test {
+    fn matches(&self, item: Item) -> bool {
+        match self {
+            Test::DivisibleBy(n) => item.worry % n == 0,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 struct ThrowAction {
     test: Test,
     true_target: MonkeyId,
     false_target: MonkeyId,
 }
 
-pub fn main() {}
+impl ThrowAction {
+    fn identify_target(&self, item: Item) -> MonkeyId {
+        if self.test.matches(item) {
+            self.true_target
+        } else {
+            self.false_target
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Plan {
+    items: Vec<Item>,
+    action: ThrowAction,
+}
+
+impl Plan {
+    fn build(monkey: &mut Monkey) -> Plan {
+        let Monkey {
+            items,
+            operation,
+            action,
+            inspections,
+        } = monkey;
+
+        *inspections += items.len() as u64;
+
+        let items = items
+            .drain(..)
+            .map(|i| operation.apply(i).relieve())
+            .collect();
+
+        Plan {
+            items,
+            action: *action,
+        }
+    }
+
+    fn execute(self, monkeys: &mut BTreeMap<MonkeyId, Monkey>) {
+        for item in self.items.into_iter() {
+            let id = self.action.identify_target(item);
+            Monkey::get_mut(monkeys, id).catch(item);
+        }
+    }
+}
+
+pub fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut monkeys = read_from_stdin_and_parse(parser::parse_input)?;
+    let ids: Vec<MonkeyId> = monkeys.keys().copied().collect();
+
+    for _i in 0..20 {
+        for id in ids.iter() {
+            let plan = Plan::build(Monkey::get_mut(&mut monkeys, *id));
+            plan.execute(&mut monkeys);
+        }
+    }
+
+    let mut values: Vec<u64> = monkeys.values().map(|monkey| monkey.inspections).collect();
+    values.sort_by(|a, b| b.cmp(a));
+    println!("{}", values.iter().take(2).product::<u64>());
+
+    Ok(())
+}
 
 mod parser {
     use super::*;
@@ -163,12 +282,13 @@ mod parser {
         tuple((
             terminated(items, line_ending),
             terminated(operation, line_ending),
-            terminated(throw_action, line_ending),
+            throw_action,
         ))
         .map(|(items, operation, action)| Monkey {
             items,
             operation,
             action,
+            inspections: 0,
         })
         .parse(input)
     }
@@ -236,6 +356,7 @@ mod parser {
                             true_target: MonkeyId(2),
                             false_target: MonkeyId(3),
                         },
+                        inspections: 0,
                     },
                 ),
                 (
@@ -256,6 +377,7 @@ mod parser {
                             true_target: MonkeyId(2),
                             false_target: MonkeyId(0),
                         },
+                        inspections: 0,
                     },
                 ),
                 (
@@ -271,6 +393,7 @@ mod parser {
                             true_target: MonkeyId(1),
                             false_target: MonkeyId(3),
                         },
+                        inspections: 0,
                     },
                 ),
                 (
@@ -286,6 +409,7 @@ mod parser {
                             true_target: MonkeyId(0),
                             false_target: MonkeyId(1),
                         },
+                        inspections: 0,
                     },
                 ),
             ];
