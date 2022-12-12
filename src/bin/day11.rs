@@ -8,9 +8,9 @@ struct Item {
 }
 
 impl Item {
-    fn relieve(self) -> Item {
+    fn relieve(self, modulus: u64) -> Item {
         Item {
-            worry: self.worry / 3,
+            worry: self.worry % modulus,
         }
     }
 }
@@ -119,7 +119,7 @@ struct Plan {
 }
 
 impl Plan {
-    fn build(monkey: &mut Monkey) -> Plan {
+    fn build(monkey: &mut Monkey, modulus: u64) -> Plan {
         let Monkey {
             items,
             operation,
@@ -131,7 +131,7 @@ impl Plan {
 
         let items = items
             .drain(..)
-            .map(|i| operation.apply(i).relieve())
+            .map(|i| operation.apply(i).relieve(modulus))
             .collect();
 
         Plan {
@@ -152,9 +152,15 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut monkeys = read_from_stdin_and_parse(parser::parse_input)?;
     let ids: Vec<MonkeyId> = monkeys.keys().copied().collect();
 
-    for _i in 0..20 {
+    let modulus = monkeys
+        .values()
+        .map(|m| m.action.test)
+        .map(|Test::DivisibleBy(n)| n)
+        .product::<u64>();
+
+    for _i in 0..10_000 {
         for id in ids.iter() {
-            let plan = Plan::build(Monkey::get_mut(&mut monkeys, *id));
+            let plan = Plan::build(Monkey::get_mut(&mut monkeys, *id), modulus);
             plan.execute(&mut monkeys);
         }
     }
