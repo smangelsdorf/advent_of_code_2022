@@ -69,6 +69,7 @@ impl Heightmap {
         &self,
         pos: (usize, usize),
     ) -> impl Iterator<Item = (usize, usize)> + '_ {
+        // Any neighbours that already have a cost were already reached through a shorter path.
         self.neighbours(pos)
             .filter(|next| self.get_cost(*next).is_none())
             .filter(move |next| self.legal(pos, *next))
@@ -82,6 +83,7 @@ impl Heightmap {
         let (i, j) = pos;
         let (i_max, j_max) = self.dims;
 
+        // Unsigned type, so just rely on integer underflow to simplify the bounds check.
         [
             (i.wrapping_sub(1), j),
             (i, j.wrapping_sub(1)),
