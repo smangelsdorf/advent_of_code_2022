@@ -24,7 +24,7 @@ impl Heightmap {
             dims,
         };
 
-        if let Some(pos) = map.find_start() {
+        for pos in map.find_starts().collect::<Vec<_>>() {
             map.set_cost(pos, 0);
         }
 
@@ -50,20 +50,19 @@ impl Heightmap {
         self.costs[i][j] = Some(cost);
     }
 
-    fn find_start(&self) -> Option<(usize, usize)> {
-        self.find_value(b'S')
+    fn find_starts(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.find_values(b'S').chain(self.find_values(b'a'))
     }
 
     fn find_end(&self) -> Option<(usize, usize)> {
-        self.find_value(b'E')
+        self.find_values(b'E').next()
     }
 
-    fn find_value(&self, value: u8) -> Option<(usize, usize)> {
+    fn find_values(&self, value: u8) -> impl Iterator<Item = (usize, usize)> + '_ {
         self.values
             .iter()
             .enumerate()
-            .filter_map(|(i, v)| v.iter().position(|c| *c == value).map(|j| (i, j)))
-            .next()
+            .filter_map(move |(i, v)| v.iter().position(|c| *c == value).map(|j| (i, j)))
     }
 
     fn uncosted_legal_neighbours(
@@ -102,7 +101,7 @@ struct Climber {
 
 impl Climber {
     fn new(map: &Heightmap) -> Climber {
-        let positions = map.find_start().into_iter().collect();
+        let positions = map.find_starts().collect();
         let cost = 0;
         let target = map.find_end().expect("destination");
 
