@@ -2,12 +2,12 @@ use std::cmp::Ordering;
 
 use aoc::parser::read_from_stdin_and_parse;
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 struct Packet {
     data: PacketData,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 enum PacketData {
     List(Vec<PacketData>),
     Integer(u64),
@@ -33,15 +33,26 @@ impl Ord for PacketData {
 }
 
 pub fn main() {
-    let data = read_from_stdin_and_parse(parser::parse_input).unwrap();
-    let n = data
-        .into_iter()
-        .enumerate()
-        .filter(|(i, (a, b))| a.data <= b.data)
-        .map(|(i, (a, b))| i + 1)
-        .sum::<usize>();
+    let mut data = read_from_stdin_and_parse(parser::parse_input).unwrap();
 
-    println!("{}", n);
+    let divider1 = Packet {
+        data: List(vec![List(vec![Integer(2)])]),
+    };
+    let divider2 = Packet {
+        data: List(vec![List(vec![Integer(6)])]),
+    };
+
+    data.push(divider1.clone());
+    data.push(divider2.clone());
+    data.sort_by(|a, b| a.data.cmp(&b.data));
+
+    let first = data.iter().position(|p| p == &divider1);
+    let second = data.iter().position(|p| p == &divider2);
+
+    if let Some((i, j)) = first.zip(second) {
+        let n = (i + 1) * (j + 1);
+        println!("{}", n);
+    }
 }
 
 mod parser {
@@ -51,10 +62,10 @@ mod parser {
 
     use nom::branch::alt;
     use nom::bytes::complete::tag;
-    use nom::character::complete::{line_ending, space0, space1};
+    use nom::character::complete::line_ending;
     use nom::combinator::eof;
     use nom::multi::{many0, many1, separated_list0, separated_list1};
-    use nom::sequence::{delimited, preceded, separated_pair, terminated, tuple};
+    use nom::sequence::{delimited, terminated, tuple};
     use nom::{IResult, Parser};
 
     fn packet_data(input: &str) -> IResult<&str, PacketData> {
@@ -69,12 +80,9 @@ mod parser {
         packet_data.map(|data| Packet { data }).parse(input)
     }
 
-    pub(super) fn parse_input(input: &str) -> IResult<&str, Vec<(Packet, Packet)>> {
+    pub(super) fn parse_input(input: &str) -> IResult<&str, Vec<Packet>> {
         terminated(
-            separated_list1(
-                tuple((line_ending, many1(line_ending))),
-                separated_pair(packet, line_ending, packet),
-            ),
+            separated_list1(many1(line_ending), packet),
             tuple((many0(line_ending), eof)),
         )
         .parse(input)
@@ -98,37 +106,33 @@ mod parser {
             assert_eq!(
                 pairs,
                 vec![
-                    (
-                        Packet {
-                            data: List(vec![
-                                List(vec![Integer(1)]),
-                                List(vec![Integer(2), Integer(3), Integer(4)])
-                            ])
-                        },
-                        Packet {
-                            data: List(vec![List(vec![Integer(1)]), Integer(2)])
-                        },
-                    ),
-                    (
-                        Packet {
-                            data: List(vec![
-                                Integer(1),
-                                Integer(2),
-                                Integer(3),
-                                Integer(4),
-                                Integer(5)
-                            ])
-                        },
-                        Packet {
-                            data: List(vec![
-                                Integer(5),
-                                Integer(4),
-                                Integer(3),
-                                Integer(2),
-                                List(vec![Integer(1)])
-                            ])
-                        },
-                    )
+                    Packet {
+                        data: List(vec![
+                            List(vec![Integer(1)]),
+                            List(vec![Integer(2), Integer(3), Integer(4)])
+                        ])
+                    },
+                    Packet {
+                        data: List(vec![List(vec![Integer(1)]), Integer(2)])
+                    },
+                    Packet {
+                        data: List(vec![
+                            Integer(1),
+                            Integer(2),
+                            Integer(3),
+                            Integer(4),
+                            Integer(5)
+                        ])
+                    },
+                    Packet {
+                        data: List(vec![
+                            Integer(5),
+                            Integer(4),
+                            Integer(3),
+                            Integer(2),
+                            List(vec![Integer(1)])
+                        ])
+                    },
                 ]
             );
         }
