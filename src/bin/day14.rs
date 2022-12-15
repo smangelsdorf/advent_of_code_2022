@@ -1,4 +1,4 @@
-use std::ops::RangeInclusive;
+use std::{iter::once, ops::RangeInclusive};
 
 use aoc::parser::read_from_stdin_and_parse;
 use itertools::Itertools;
@@ -166,7 +166,15 @@ pub fn main() {
 
     let x_bounds = to_bounds(&data, |Pos { x, .. }| x);
     let y_bounds = to_bounds(&data, |Pos { y, .. }| y);
-    let y_bounds = 0..=*y_bounds.end();
+    let y_bounds = 0..=*y_bounds.end() + 2;
+    let x_bounds = (x_bounds.start().checked_sub(*y_bounds.end()).unwrap_or(0))
+        ..=x_bounds.end() + y_bounds.end();
+
+    let floor = RockLine::Horizontal {
+        y: *y_bounds.end(),
+        x_start: *x_bounds.start(),
+        x_end: *x_bounds.end(),
+    };
 
     let mut area = Area::new(x_bounds, y_bounds);
 
@@ -177,6 +185,7 @@ pub fn main() {
                 .tuple_windows()
                 .map(|(a, b)| RockLine::new(a, b))
         })
+        .chain(once(floor))
         .collect::<Vec<RockLine>>();
 
     for line in lines {
@@ -187,12 +196,16 @@ pub fn main() {
 
     let origin = Pos { x: 500, y: 0 };
 
-    for i in 0.. {
+    for i in 1.. {
         let landing = area.fall_from(origin);
         match landing {
+            LandingSpace::Pos(pos) if pos == origin => {
+                println!("{}", i);
+                return;
+            }
             LandingSpace::Pos(pos) => area.set_at(pos, Material::Sand),
             LandingSpace::OutOfBounds => {
-                println!("{}", i);
+                println!("out of bounds");
                 return;
             }
         }
