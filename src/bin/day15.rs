@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use aoc::parser::read_from_stdin_and_parse;
+use itertools::Itertools;
 
 #[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
 struct Pos {
@@ -15,7 +14,7 @@ struct Sensor {
 }
 
 impl Sensor {
-    fn projection(&self, y: i64) -> impl Iterator<Item = Pos> {
+    fn projection(&self, y: i64) -> Option<(i64, i64)> {
         let Sensor {
             pos: Pos {
                 x: self_x,
@@ -30,28 +29,51 @@ impl Sensor {
         let reach = (self_x - beacon_x).abs() + (self_y - beacon_y).abs();
         let distance = (y - self_y).abs();
 
-        ((distance - reach + self_x)..=(reach - distance + self_x)).map(move |x| Pos { x, y })
+        Some(((distance - reach + self_x), (reach - distance + self_x))).filter(|(a, b)| a <= b)
+    }
+}
+
+// Collapse overlapping ranges into one, or returns both ranges as Err.
+//
+// The ranges are considered inclusive, so (1, 2) and (3, 4) would collapse to (1, 4)
+fn collapse(
+    (a0, b0): (i64, i64),
+    (a1, b1): (i64, i64),
+) -> Result<(i64, i64), ((i64, i64), (i64, i64))> {
+    if (a0..=(b0 + 1)).contains(&a1) || (a1..=(b1 + 1)).contains(&a0) {
+        Ok((i64::min(a0, a1), i64::max(b0, b1)))
+    } else {
+        Err(((a0, b0), (a1, b1)))
     }
 }
 
 pub fn main() {
     let sensors = read_from_stdin_and_parse(parser::parse_input).unwrap();
 
-    let beacons = sensors
-        .iter()
-        .map(|Sensor { beacon, .. }| *beacon)
-        .collect::<HashSet<Pos>>();
+    let field_size = 4000000;
 
-    let y = 2000000;
+    let distress = (0..=field_size)
+        .map(|y| {
+            let v = sensors
+                .iter()
+                .flat_map(|s| s.projection(y))
+                .sorted_by_key(|(a, _b)| *a)
+                .coalesce(collapse)
+                .collect::<Vec<_>>();
+            (y, v)
+        })
+        .filter_map(|(y, coverage)| match coverage.as_slice() {
+            &[(a, _b)] if a > 0 => Some((0, y)),
+            &[(_a, b)] if b < field_size => Some((field_size, y)),
+            &[(_, b0), (a1, _)] if b0 + 1 < a1 => Some((b0 + 1, y)),
+            _ => None,
+        })
+        .next();
 
-    let coverage = sensors
-        .iter()
-        .flat_map(|s| s.projection(y))
-        .collect::<HashSet<Pos>>();
-
-    let n = coverage.difference(&beacons).count();
-
-    println!("{}", n);
+    match distress {
+        Some((x, y)) => println!("{}", x * 4000000 + y),
+        None => println!("Nothing"),
+    }
 }
 
 mod parser {
