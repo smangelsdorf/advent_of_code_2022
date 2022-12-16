@@ -26,9 +26,13 @@ impl Sensor {
             },
         } = self;
 
+        // The distance from the sensor to its beacon is the known reach of the sensor.
         let reach = (self_x - beacon_x).abs() + (self_y - beacon_y).abs();
+        // The distance consumed by moving to the target y coordinate.
         let distance = (y - self_y).abs();
 
+        // We can use the remaining reach to spread left/right from there, as long as
+        // we haven't already exceeded our reach.
         Some(((distance - reach + self_x), (reach - distance + self_x))).filter(|(a, b)| a <= b)
     }
 }
@@ -54,6 +58,8 @@ pub fn main() {
 
     let distress = (0..=field_size)
         .map(|y| {
+            // Project each sensor into the current "row", sort the ranges and
+            // collapse any that overlap.
             let v = sensors
                 .iter()
                 .flat_map(|s| s.projection(y))
@@ -62,6 +68,10 @@ pub fn main() {
                 .collect::<Vec<_>>();
             (y, v)
         })
+        // Any row that has a gap between ranges, or isn't fully covered at the
+        // start/end, that's our beacon position. The problem promises only one
+        // of these (So this grabs the first one, ignoring the possibility of
+        // others).
         .filter_map(|(y, coverage)| match coverage.as_slice() {
             &[(a, _b)] if a > 0 => Some((0, y)),
             &[(_a, b)] if b < field_size => Some((field_size, y)),
