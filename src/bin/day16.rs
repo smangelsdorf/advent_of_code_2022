@@ -1,3 +1,10 @@
+// This is very slow to run but I've already spent way too much time
+// on day 16. It's just a poor graph traversal implementation but I
+// wasn't sure how to short-circuit it further.
+//
+// On my test input, it evaluates around 322 million states before
+// completing.
+
 use id_arena::Id;
 use im::HashSet as ImHashSet;
 
@@ -11,8 +18,8 @@ struct Valve {
 }
 
 const START_VALVE: &'static str = "AA";
-const TIME_LIMIT: u64 = 30;
-const ACTOR_COUNT: usize = 1;
+const TIME_LIMIT: u64 = 26;
+const ACTOR_COUNT: usize = 2;
 
 #[derive(Debug)]
 struct State<'a, const N: usize> {
@@ -104,47 +111,46 @@ impl<'a, const N: usize> State<'a, N> {
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let graph = read_from_stdin_and_parse(parser::parse_input)?;
 
-    let mut terminal_states = Vec::with_capacity(1024);
+    let mut processed = 0;
+    let mut max = State::<ACTOR_COUNT>::new(graph.start());
     let mut current = vec![State::<ACTOR_COUNT>::new(graph.start())];
-    while !current.is_empty() {
-        let (next, done) = current
-            .into_iter()
-            .flat_map(|state| {
-                let graph = &graph;
-                let done = state.finish();
 
-                let (time_spent, node) = state.actors[0];
-                let visited = state.visited.clone();
+    while let Some(state) = current.pop() {
+        if state.can_continue() {
+            let graph = &graph;
+            let done = state.finish();
 
-                node.connections
-                    .iter()
-                    .filter_map(move |conn| {
-                        let node = graph.get(conn.target);
-                        if visited.contains(&node.id) || time_spent + conn.cost + 1 > TIME_LIMIT {
-                            None
-                        } else {
-                            Some(state.update(conn, node))
-                        }
-                    })
-                    .once_if_empty(done)
-            })
-            .partition::<Vec<_>, _>(State::can_continue);
+            processed += 1;
+            if processed % 1_000_000 == 0 {
+                println!("processed: {}", processed);
+            }
 
-        terminal_states.extend(
-            done.iter()
-                .map(State::finish)
-                .filter(State::is_valid)
-                .max_by_key(|s| s.released),
-        );
-        current = next;
+            let (time_spent, node) = state.actors[0];
+            let visited = state.visited.clone();
+
+            let iter = node
+                .connections
+                .iter()
+                .filter_map(move |conn| {
+                    let node = graph.get(conn.target);
+                    if visited.contains(&node.id) || time_spent + conn.cost + 1 > TIME_LIMIT {
+                        None
+                    } else {
+                        Some(state.update(conn, node))
+                    }
+                })
+                .once_if_empty(done);
+            current.extend(iter);
+        } else {
+            let state = state.finish();
+
+            if state.is_valid() && state.released > max.released {
+                max = state;
+            }
+        }
     }
 
-    let n = terminal_states
-        .into_iter()
-        .max_by_key(|s| s.released)
-        .unwrap()
-        .released;
-
+    let n = max.released;
     println!("{:?}", n);
 
     Ok(())
