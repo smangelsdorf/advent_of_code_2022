@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io::Read;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +100,24 @@ impl<const WIDTH: usize> Cave<WIDTH> {
         rock.positions()
             .all(|pos| self.get(offset + pos) == Some(Block::Empty))
     }
+
+    fn cache_key(&self) -> [u8; 100] {
+        let mut out = [0; 100];
+        for (row, b) in self
+            .blocks
+            .iter()
+            .skip(self.top.unwrap_or(0).saturating_sub(out.len()))
+            .zip(out.iter_mut())
+        {
+            for (j, block) in row.iter().enumerate() {
+                if *block == Block::Rock {
+                    *b |= 1 << j;
+                }
+            }
+        }
+
+        out
+    }
 }
 
 trait RockShape {
@@ -175,49 +194,95 @@ impl<const WIDTH: usize, const HEIGHT: usize> RockShape for Rock<WIDTH, HEIGHT> 
     }
 }
 
+const ROCKS_TO_DROP: usize = 1_000_000_000_000;
+
 pub fn main() {
-    let mut jet_pattern_iter = std::io::stdin()
+    let jet_pattern = std::io::stdin()
         .bytes()
         .map(|r| r.map(Direction::from))
         .collect::<Result<Vec<_>, _>>()
-        .unwrap()
-        .into_iter()
-        .cycle();
+        .unwrap();
+    let increment = jet_pattern.len() * ROCK_SHAPES.len();
+
+    let mut jet_pattern_iter = jet_pattern.into_iter().cycle();
 
     let mut rocks_iter = ROCK_SHAPES.into_iter().cycle();
 
     let mut cave = Cave::<7>::new();
 
-    for _i in 0..2022 {
-        let rock = rocks_iter.next().unwrap();
-        let mut pos = cave.rock_start_position();
+    let mut noted_steps: BTreeMap<[u8; 100], (usize, usize)> = BTreeMap::new();
 
-        loop {
-            let direction = jet_pattern_iter.next().unwrap();
-            let candidate = direction.apply(pos);
+    let mut cycle = None;
 
-            if cave.valid(rock, candidate) {
-                pos = candidate;
-            }
+    for j in 0..5000 {
+        for _i in 0..increment {
+            drop_rock(&mut cave, &mut rocks_iter, &mut jet_pattern_iter);
+        }
 
-            let candidate = pos.y.checked_sub(1).map(|y| Pos { x: pos.x, y });
-
-            match candidate {
-                Some(candidate) if cave.valid(rock, candidate) => {
-                    pos = candidate;
-                }
-                _ => {
-                    for rock_pos in rock.positions() {
-                        cave.put_rock(pos + rock_pos);
-                    }
-
-                    break;
-                }
-            }
+        if let Some((setup_increments, setup_total)) =
+            noted_steps.insert(cave.cache_key(), (j, cave.top.unwrap_or(0)))
+        {
+            cycle = Some((
+                setup_increments + 1,
+                setup_total,
+                j - setup_increments,
+                cave.top.expect("top") - setup_total,
+            ));
+            break;
         }
     }
 
-    println!("{}", cave.top.unwrap() + 1);
+    let (setup_increments, setup_total, cycle_increments, cycle_delta) =
+        cycle.expect("cycle detected");
+
+    let after_setup = ROCKS_TO_DROP.saturating_sub(setup_increments * increment);
+    let cycle_steps = cycle_increments * increment;
+    let cycle_repeats = after_setup / cycle_steps;
+    let remainder = after_setup % cycle_steps;
+
+    let top = cave.top.expect("top");
+    for _i in 0..remainder {
+        drop_rock(&mut cave, &mut rocks_iter, &mut jet_pattern_iter);
+    }
+    let remainder_delta = cave.top.expect("top") - top;
+
+    let total = setup_total + cycle_repeats * cycle_delta + remainder_delta + 1;
+    println!("{}", total);
+}
+
+fn drop_rock<const WIDTH: usize, I0, I1>(
+    cave: &mut Cave<WIDTH>,
+    rocks_iter: &mut I0,
+    jet_pattern_iter: &mut I1,
+) where
+    I0: Iterator<Item = &'static dyn RockShape>,
+    I1: Iterator<Item = Direction>,
+{
+    let rock = rocks_iter.next().unwrap();
+    let mut pos = cave.rock_start_position();
+    loop {
+        let direction = jet_pattern_iter.next().unwrap();
+        let candidate = direction.apply(pos);
+
+        if cave.valid(rock, candidate) {
+            pos = candidate;
+        }
+
+        let candidate = pos.y.checked_sub(1).map(|y| Pos { x: pos.x, y });
+
+        match candidate {
+            Some(candidate) if cave.valid(rock, candidate) => {
+                pos = candidate;
+            }
+            _ => {
+                for rock_pos in rock.positions() {
+                    cave.put_rock(pos + rock_pos);
+                }
+
+                break;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
