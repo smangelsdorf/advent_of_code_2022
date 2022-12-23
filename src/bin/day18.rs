@@ -32,7 +32,7 @@ struct Grid {
 impl Grid {
     fn new(max_x: usize, max_y: usize, max_z: usize) -> Self {
         Self {
-            blocks: vec![vec![vec![Block::Air; max_z + 1]; max_y + 1]; max_x + 1],
+            blocks: vec![vec![vec![Block::Air; max_z + 2]; max_y + 2]; max_x + 2],
         }
     }
 
@@ -64,15 +64,6 @@ impl Grid {
         )
     }
 
-    fn cubes(&'_ self) -> impl Iterator<Item = Pos> + '_ {
-        let (max_x, max_y, max_z) = self.size();
-
-        (0..max_x)
-            .cartesian_product((0..max_y).cartesian_product(0..max_z))
-            .map(|(x, (y, z))| Pos { x, y, z })
-            .filter(|Pos { x, y, z }| self.blocks[*x][*y][*z] == Block::Cube)
-    }
-
     fn neighbour_positions(
         &self,
         x: usize,
@@ -95,28 +86,26 @@ impl Grid {
         })
     }
 
-    fn flood_steam(&mut self) {
-        let mut seen = BTreeSet::new();
+    fn boundary_blocks(&self, block: Block) -> Vec<(usize, usize, usize)> {
         let (max_x, max_y, max_z) = self.size();
 
-        let iter = (0..max_x)
-            .zip((0..max_y).zip(0..max_z))
-            .map(|(x, (y, z))| (x, y, z));
-
-        let mut current: Vec<_> = iter
-            .clone()
+        (0..max_x)
+            .cartesian_product((0..max_y).cartesian_product(0..max_z))
+            .map(|(x, (y, z))| (x, y, z))
             .filter(|&(x, y, z)| {
                 (x == 0 || x == max_x - 1 || y == 0 || y == max_y - 1 || z == 0 || z == max_z - 1)
-                    && self.blocks[x][y][z] == Block::Air
+                    && self.blocks[x][y][z] == block
             })
-            .collect();
-        seen.extend(current.clone());
+            .collect()
+    }
+
+    fn flood_steam(&mut self) {
+        let mut current: Vec<_> = self.boundary_blocks(Block::Air);
 
         while let Some((x, y, z)) = current.pop() {
             for (x, y, z) in self.neighbour_positions(x, y, z) {
                 if self.blocks[x][y][z] == Block::Air {
                     self.blocks[x][y][z] = Block::Steam;
-                    seen.insert((x, y, z));
                     current.push((x, y, z));
                 }
             }
@@ -126,35 +115,28 @@ impl Grid {
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cubes: Vec<Pos> = read_from_stdin_and_parse(parse_input)?;
-    let grid = Grid::from_cube_list(cubes.iter().copied());
-    let (max_x, max_y, max_z) = grid.size();
+    let mut grid = Grid::from_cube_list(cubes.iter().copied());
+    grid.flood_steam();
 
-    let n = grid
-        .cubes()
-        .flat_map(|cube| {
-            // Air neighbours
-            let mut airs = grid
-                .neighbour_positions(cube.x, cube.y, cube.z)
-                .filter(|&(x, y, z)| grid.blocks[x][y][z] == Block::Air)
-                .collect::<Vec<_>>();
-
-            if cube.x == 0 || cube.x == max_x - 1 {
-                airs.push((cube.x, cube.y, cube.z));
+    let mut current = grid.boundary_blocks(Block::Steam);
+    let mut pairs = BTreeSet::new();
+    let mut seen = BTreeSet::new();
+    while let Some(pos @ (x, y, z)) = current.pop() {
+        for neighbour @ (x, y, z) in grid.neighbour_positions(x, y, z) {
+            if grid.blocks[x][y][z] == Block::Steam {
+                if !seen.contains(&neighbour) {
+                    seen.insert(neighbour);
+                    current.push((x, y, z));
+                }
+            } else if grid.blocks[x][y][z] == Block::Cube {
+                pairs.insert((pos, neighbour));
+            } else {
+                panic!("air next to steam at {:?} - {:?}", pos, neighbour);
             }
+        }
+    }
 
-            if cube.y == 0 || cube.y == max_y - 1 {
-                airs.push((cube.x, cube.y, cube.z));
-            }
-
-            if cube.z == 0 || cube.z == max_z - 1 {
-                airs.push((cube.x, cube.y, cube.z));
-            }
-
-            airs
-        })
-        .count();
-
-    println!("{}", n);
+    println!("{}", pairs.len());
 
     Ok(())
 }
@@ -167,7 +149,11 @@ fn parse_input(input: &str) -> IResult<&str, Vec<Pos>> {
             terminated(base10_numeric, tag(",")),
             base10_numeric,
         ))
-        .map(|(x, y, z)| Pos { x, y, z }),
+        .map(|(x, y, z): (usize, usize, usize)| Pos {
+            x: x + 1,
+            y: y + 1,
+            z: z + 1,
+        }),
     )
     .parse(input)
 }
