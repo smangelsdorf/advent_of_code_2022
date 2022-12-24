@@ -1,3 +1,5 @@
+// This is slow, but it works!
+
 use std::collections::BTreeMap;
 
 use aoc::parser::read_from_stdin_and_parse;
@@ -117,6 +119,7 @@ impl<'a> State<'a> {
         self.ore >= cost.ore && self.clay >= cost.clay && self.obsidian >= cost.obsidian
     }
 
+    // Prune future actions that are impossible or clearly suboptimal.
     fn future_legal(&self, action: Action) -> bool {
         let cost = self.blueprint.cost_of(action);
         let max_costs = self.max_costs();
@@ -142,6 +145,7 @@ impl<'a> State<'a> {
 }
 
 // Custom iterator to avoid allocating a Vec for intermediate steps.
+#[derive(Debug, Clone, Copy)]
 enum StateStepIter<'a> {
     Continue {
         state: State<'a>,
@@ -269,7 +273,8 @@ impl Blueprint {
 }
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let blueprints = read_from_stdin_and_parse(parser::parse_input)?;
+    let mut blueprints = read_from_stdin_and_parse(parser::parse_input)?;
+    blueprints.truncate(3);
 
     let mut best = BTreeMap::new();
 
@@ -278,14 +283,15 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into_par_iter()
             .map(|(i, blueprint)| (i, simulate(i, blueprint))),
     );
+    println!("{:?}", best);
 
-    let n = best.into_iter().map(|(i, geode)| (i * geode)).sum::<u64>();
+    let n = best.into_iter().map(|(_i, geode)| geode).product::<u64>();
     println!("{}", n);
 
     Ok(())
 }
 
-const MAX_TIME: u64 = 24;
+const MAX_TIME: u64 = 32;
 fn simulate(i: u64, blueprint: Blueprint) -> u64 {
     println!("{}: {:?}", i, blueprint);
     let mut current = State::initial_iterator(&blueprint).collect::<Vec<_>>();
@@ -307,6 +313,7 @@ fn simulate(i: u64, blueprint: Blueprint) -> u64 {
         current.extend(state.tick_until_action())
     }
 
+    println!("{}: done ({:?})", i, max);
     max.unwrap()
 }
 
