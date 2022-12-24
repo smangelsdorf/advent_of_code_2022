@@ -6,20 +6,21 @@ use rayon::prelude::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct State<'a> {
     blueprint: &'a Blueprint,
-    ore: u16,
-    clay: u16,
-    obsidian: u16,
-    geode: u16,
-    ore_robot: u16,
-    clay_robot: u16,
-    obsidian_robot: u16,
-    geode_robot: u16,
-    time: u16,
+    ore: u64,
+    clay: u64,
+    obsidian: u64,
+    geode: u64,
+    ore_robot: u64,
+    clay_robot: u64,
+    obsidian_robot: u64,
+    geode_robot: u64,
+    time: u64,
+    next_action: Action,
 }
 
 impl<'a> State<'a> {
-    fn new(blueprint: &'a Blueprint) -> Self {
-        Self {
+    fn initial_iterator(blueprint: &'a Blueprint) -> StateStepIter<'a> {
+        let state = Self {
             blueprint,
             ore: 0,
             clay: 0,
@@ -30,6 +31,15 @@ impl<'a> State<'a> {
             obsidian_robot: 0,
             geode_robot: 0,
             time: 0,
+            next_action: Action::BuildGeodeRobot,
+        };
+
+        StateStepIter::Continue {
+            state,
+            build_ore_robot: state.future_legal(Action::BuildOreRobot),
+            build_clay_robot: state.future_legal(Action::BuildClayRobot),
+            build_obsidian_robot: state.future_legal(Action::BuildObsidianRobot),
+            build_geode_robot: state.future_legal(Action::BuildGeodeRobot),
         }
     }
 
@@ -46,26 +56,40 @@ impl<'a> State<'a> {
         self.geode += self.geode_robot;
     }
 
-    fn tick(&mut self, action: Action) {
-        self.spend(self.blueprint.cost_of(action));
+    fn tick_until_action(&mut self) -> StateStepIter<'a> {
+        while !self.legal(self.next_action) {
+            self.time += 1;
+            self.accrue();
+
+            if self.done() {
+                return StateStepIter::Done { state: Some(*self) };
+            }
+        }
+
+        self.spend(self.blueprint.cost_of(self.next_action));
 
         self.time += 1;
         self.accrue();
 
-        match action {
-            Action::BuildOreRobot => {
-                self.ore_robot += 1;
+        let target = match self.next_action {
+            Action::BuildOreRobot => &mut self.ore_robot,
+            Action::BuildClayRobot => &mut self.clay_robot,
+            Action::BuildObsidianRobot => &mut self.obsidian_robot,
+            Action::BuildGeodeRobot => &mut self.geode_robot,
+        };
+
+        *target += 1;
+
+        if self.done() {
+            StateStepIter::Done { state: Some(*self) }
+        } else {
+            StateStepIter::Continue {
+                state: *self,
+                build_ore_robot: self.future_legal(Action::BuildOreRobot),
+                build_clay_robot: self.future_legal(Action::BuildClayRobot),
+                build_obsidian_robot: self.future_legal(Action::BuildObsidianRobot),
+                build_geode_robot: self.future_legal(Action::BuildGeodeRobot),
             }
-            Action::BuildClayRobot => {
-                self.clay_robot += 1;
-            }
-            Action::BuildObsidianRobot => {
-                self.obsidian_robot += 1;
-            }
-            Action::BuildGeodeRobot => {
-                self.geode_robot += 1;
-            }
-            Action::DoNothing => {}
         }
     }
 
@@ -93,24 +117,101 @@ impl<'a> State<'a> {
         self.ore >= cost.ore && self.clay >= cost.clay && self.obsidian >= cost.obsidian
     }
 
-    fn useful(&self, action: Action) -> bool {
-        if !self.legal(action) {
-            return false;
+    fn future_legal(&self, action: Action) -> bool {
+        let cost = self.blueprint.cost_of(action);
+        let max_costs = self.max_costs();
+
+        let remaining_time = MAX_TIME - self.time;
+
+        match action {
+            Action::BuildOreRobot if self.ore_robot > max_costs.ore => return false,
+            Action::BuildClayRobot if self.clay_robot > max_costs.clay => return false,
+            Action::BuildObsidianRobot if self.obsidian_robot > max_costs.obsidian => return false,
+            _ => {}
         }
 
-        let max_costs = self.max_costs();
-        match action {
-            Action::BuildOreRobot => self.ore_robot < max_costs.ore,
-            Action::BuildClayRobot => self.clay_robot < max_costs.clay,
-            Action::BuildObsidianRobot => self.obsidian_robot < max_costs.obsidian,
-            Action::BuildGeodeRobot => true,
-            // No reason to do nothing if we can build a geode robot
-            Action::DoNothing => !self.legal(Action::BuildGeodeRobot),
-        }
+        // If we'll accrue enough resources before the time limit, we can do it.
+        self.ore + remaining_time * self.ore_robot >= cost.ore
+            && self.clay + remaining_time * self.clay_robot >= cost.clay
+            && self.obsidian + remaining_time * self.obsidian_robot >= cost.obsidian
     }
 
     fn done(&self) -> bool {
         self.time >= MAX_TIME
+    }
+}
+
+// Custom iterator to avoid allocating a Vec for intermediate steps.
+enum StateStepIter<'a> {
+    Continue {
+        state: State<'a>,
+        build_ore_robot: bool,
+        build_clay_robot: bool,
+        build_obsidian_robot: bool,
+        build_geode_robot: bool,
+    },
+    Done {
+        state: Option<State<'a>>,
+    },
+}
+
+impl<'a> Iterator for StateStepIter<'a> {
+    type Item = State<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            StateStepIter::Done { state } => state.take(),
+
+            StateStepIter::Continue {
+                state,
+                build_ore_robot: ref mut b,
+                ..
+            } if *b => {
+                *b = false;
+                Some(State {
+                    next_action: Action::BuildOreRobot,
+                    ..*state
+                })
+            }
+
+            StateStepIter::Continue {
+                state,
+                build_clay_robot: ref mut b,
+                ..
+            } if *b => {
+                *b = false;
+                Some(State {
+                    next_action: Action::BuildClayRobot,
+                    ..*state
+                })
+            }
+
+            StateStepIter::Continue {
+                state,
+                build_obsidian_robot: ref mut b,
+                ..
+            } if *b => {
+                *b = false;
+                Some(State {
+                    next_action: Action::BuildObsidianRobot,
+                    ..*state
+                })
+            }
+
+            StateStepIter::Continue {
+                state,
+                build_geode_robot: ref mut b,
+                ..
+            } if *b => {
+                *b = false;
+                Some(State {
+                    next_action: Action::BuildGeodeRobot,
+                    ..*state
+                })
+            }
+
+            _ => None,
+        }
     }
 }
 
@@ -120,24 +221,13 @@ enum Action {
     BuildClayRobot,
     BuildObsidianRobot,
     BuildGeodeRobot,
-    DoNothing,
-}
-
-impl Action {
-    fn all() -> impl Iterator<Item = Action> {
-        std::iter::once(Action::BuildOreRobot)
-            .chain(std::iter::once(Action::BuildClayRobot))
-            .chain(std::iter::once(Action::BuildObsidianRobot))
-            .chain(std::iter::once(Action::BuildGeodeRobot))
-            .chain(std::iter::once(Action::DoNothing))
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct Cost {
-    ore: u16,
-    clay: u16,
-    obsidian: u16,
+    ore: u64,
+    clay: u64,
+    obsidian: u64,
 }
 
 impl std::ops::Add<Cost> for Cost {
@@ -174,7 +264,6 @@ impl Blueprint {
             Action::BuildClayRobot => self.clay_robot_cost,
             Action::BuildObsidianRobot => self.obsidian_robot_cost,
             Action::BuildGeodeRobot => self.geode_robot_cost,
-            Action::DoNothing => Cost::default(),
         }
     }
 }
@@ -190,19 +279,19 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|(i, blueprint)| (i, simulate(i, blueprint))),
     );
 
-    let n = best.into_iter().map(|(i, geode)| (i * geode)).sum::<u16>();
+    let n = best.into_iter().map(|(i, geode)| (i * geode)).sum::<u64>();
     println!("{}", n);
 
     Ok(())
 }
 
-const MAX_TIME: u16 = 24;
-fn simulate(i: u16, blueprint: Blueprint) -> u16 {
+const MAX_TIME: u64 = 24;
+fn simulate(i: u64, blueprint: Blueprint) -> u64 {
     println!("{}: {:?}", i, blueprint);
-    let mut current = vec![State::new(&blueprint)];
+    let mut current = State::initial_iterator(&blueprint).collect::<Vec<_>>();
     let mut max = None;
 
-    while let Some(state) = current.pop() {
+    while let Some(mut state) = current.pop() {
         if state.done() {
             if let Some(max) = max.as_mut() {
                 if state.geode > *max {
@@ -215,13 +304,7 @@ fn simulate(i: u16, blueprint: Blueprint) -> u16 {
             continue;
         }
 
-        for action in Action::all() {
-            if state.useful(action) {
-                let mut next = state.clone();
-                next.tick(action);
-                current.push(next);
-            }
-        }
+        current.extend(state.tick_until_action())
     }
 
     max.unwrap()
@@ -285,7 +368,7 @@ mod parser {
         many1(alt((line_ending, space1))).map(|_| ()).parse(input)
     }
 
-    fn blueprint(input: &str) -> IResult<&str, (u16, Blueprint)> {
+    fn blueprint(input: &str) -> IResult<&str, (u64, Blueprint)> {
         tuple((
             terminated(
                 delimited(tag("Blueprint "), base10_numeric, tag(":")),
@@ -312,7 +395,7 @@ mod parser {
         .parse(input)
     }
 
-    pub(super) fn parse_input(input: &str) -> IResult<&str, Vec<(u16, Blueprint)>> {
+    pub(super) fn parse_input(input: &str) -> IResult<&str, Vec<(u64, Blueprint)>> {
         separated_list1(many1(line_ending), blueprint).parse(input)
     }
 }
@@ -412,7 +495,7 @@ mod tests {
             },
         };
 
-        let mut state = State::new(&blueprint);
+        let mut state = State::initial_iterator(&blueprint).next().unwrap();
 
         state.accrue();
         state.accrue();
@@ -427,82 +510,6 @@ mod tests {
         });
 
         assert_eq!(state.ore, 0);
-    }
-
-    #[test]
-    fn test_state_useful() {
-        let blueprint = Blueprint {
-            ore_robot_cost: Cost {
-                ore: 4,
-                ..Default::default()
-            },
-            clay_robot_cost: Cost {
-                ore: 2,
-                ..Default::default()
-            },
-            obsidian_robot_cost: Cost {
-                ore: 3,
-                clay: 14,
-                ..Default::default()
-            },
-            geode_robot_cost: Cost {
-                ore: 2,
-                obsidian: 7,
-                ..Default::default()
-            },
-        };
-
-        let mut state = State::new(&blueprint);
-        assert!(!state.useful(Action::BuildOreRobot));
-        assert!(!state.useful(Action::BuildClayRobot));
-        assert!(!state.useful(Action::BuildObsidianRobot));
-        assert!(!state.useful(Action::BuildGeodeRobot));
-        assert!(state.useful(Action::DoNothing));
-
-        state.ore = 4;
-        assert!(state.useful(Action::BuildOreRobot));
-        assert!(state.useful(Action::BuildClayRobot));
-        assert!(!state.useful(Action::BuildObsidianRobot));
-        assert!(!state.useful(Action::BuildGeodeRobot));
-        assert!(state.useful(Action::DoNothing));
-
-        state.clay = 20;
-        assert!(state.useful(Action::BuildOreRobot));
-        assert!(state.useful(Action::BuildClayRobot));
-        assert!(state.useful(Action::BuildObsidianRobot));
-        assert!(!state.useful(Action::BuildGeodeRobot));
-        assert!(state.useful(Action::DoNothing));
-
-        state.obsidian = 10;
-        assert!(state.useful(Action::BuildOreRobot));
-        assert!(state.useful(Action::BuildClayRobot));
-        assert!(state.useful(Action::BuildObsidianRobot));
-        assert!(state.useful(Action::BuildGeodeRobot));
-        assert!(!state.useful(Action::DoNothing));
-
-        state.ore_robot = 10;
-        assert!(!state.useful(Action::BuildOreRobot));
-        assert!(state.useful(Action::BuildClayRobot));
-        assert!(state.useful(Action::BuildObsidianRobot));
-        assert!(state.useful(Action::BuildGeodeRobot));
-
-        state.clay_robot = 15;
-        assert!(!state.useful(Action::BuildOreRobot));
-        assert!(!state.useful(Action::BuildClayRobot));
-        assert!(state.useful(Action::BuildObsidianRobot));
-        assert!(state.useful(Action::BuildGeodeRobot));
-
-        state.obsidian_robot = 10;
-        assert!(!state.useful(Action::BuildOreRobot));
-        assert!(!state.useful(Action::BuildClayRobot));
-        assert!(!state.useful(Action::BuildObsidianRobot));
-        assert!(state.useful(Action::BuildGeodeRobot));
-
-        state.geode_robot = 10;
-        assert!(!state.useful(Action::BuildOreRobot));
-        assert!(!state.useful(Action::BuildClayRobot));
-        assert!(!state.useful(Action::BuildObsidianRobot));
-        assert!(state.useful(Action::BuildGeodeRobot));
     }
 
     #[test]
@@ -528,7 +535,7 @@ mod tests {
             },
         };
 
-        let state = State::new(&blueprint);
+        let state = State::initial_iterator(&blueprint).next().unwrap();
 
         assert_eq!(
             state.max_costs(),
