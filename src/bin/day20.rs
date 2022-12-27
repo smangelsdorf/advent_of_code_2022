@@ -2,22 +2,29 @@
 // to do this rather than falling back to the "obvious" solution of approximating
 // it with a doubly linked list (well, the Rust equivalent).
 //
-// It feels like it backfired quite a bit in part 2 (which I'm just about to
-// start as I write this comment), but I'm going to double down and press on.
+// It paid off in step 2, this runs pretty quickly in release mode.
 
 use aoc::parser::{base10_numeric, read_from_stdin_and_parse};
 use nom::{character::complete::line_ending, multi::separated_list1, IResult, Parser};
 
 use collection::RelocationVec;
 
+const KEY: i64 = 811589153;
+
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vec = read_from_stdin_and_parse(parse_input)?;
     let mut vec = vec
         .into_iter()
-        .map(|i| (i, false))
+        .map(|i| (i * KEY, false))
         .collect::<RelocationVec<_>>();
 
-    mix(&mut vec, noop);
+    for _ in 0..10 {
+        for &mut (_, ref mut relocated) in vec.iter_mut() {
+            *relocated = false;
+        }
+
+        mix(&mut vec, no_inspect);
+    }
 
     let mut pos = vec.start();
     while vec.get(&pos).map(|&(value, _)| value) != Some(0) {
@@ -39,16 +46,18 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn noop<const CHUNK_SIZE: usize>(_vec: &RelocationVec<(i64, bool), CHUNK_SIZE>) {}
+fn no_inspect<const CHUNK_SIZE: usize>(_vec: &RelocationVec<(i64, bool), CHUNK_SIZE>) {}
 
-fn mix<F, const CHUNK_SIZE: usize>(vec: &mut RelocationVec<(i64, bool), CHUNK_SIZE>, mut f: F)
-where
+fn mix<F, const CHUNK_SIZE: usize>(
+    vec: &mut RelocationVec<(i64, bool), CHUNK_SIZE>,
+    mut debug_inspect: F,
+) where
     F: FnMut(&RelocationVec<(i64, bool), CHUNK_SIZE>),
 {
     let n = vec.len();
 
     // Inspect function used by the test cases.
-    f(&vec);
+    debug_inspect(&vec);
 
     for i in 0..n {
         let pos = vec.initial_position(i).expect("position for elements");
@@ -58,7 +67,7 @@ where
             let target = vec.relocate(pos, value);
             vec.get_mut(&target).unwrap().1 = true;
 
-            f(&vec);
+            debug_inspect(&vec);
         }
     }
 }
@@ -105,6 +114,8 @@ mod collection {
         // Expensive to compute, never changes.
         len: usize,
 
+        // HACK: In part 2 we need to always relocate in the original order. So,
+        // this tracks the current position of each element in the initial order.
         initial_order: Vec<Position>,
     }
 
@@ -171,6 +182,7 @@ mod collection {
             let mut item = Some(self.get_mut_slot(&position).take().expect("valid position"));
             let mut pos = target;
 
+            // Push elements forward until something lands in an empty slot.
             while let Some(v @ (index, _)) = item {
                 self.initial_order[index] = pos;
                 item = self.get_mut_slot(&pos).replace(v);
@@ -186,6 +198,13 @@ mod collection {
                 .iter()
                 .flat_map(|chunk| chunk.iter())
                 .filter_map(|item| item.as_ref().map(|(_, item)| item))
+        }
+
+        pub(super) fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+            self.vec
+                .iter_mut()
+                .flat_map(|chunk| chunk.iter_mut())
+                .filter_map(|item| item.as_mut().map(|(_, item)| item))
         }
 
         pub(super) fn initial_position(&self, index: usize) -> Option<Position> {
