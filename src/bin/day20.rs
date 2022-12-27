@@ -1,3 +1,10 @@
+// This is an exercise in building a somewhat efficient and idiomatic container
+// to do this rather than falling back to the "obvious" solution of approximating
+// it with a doubly linked list (well, the Rust equivalent).
+//
+// It feels like it backfired quite a bit in part 2 (which I'm just about to
+// start as I write this comment), but I'm going to double down and press on.
+
 use aoc::parser::{base10_numeric, read_from_stdin_and_parse};
 use nom::{character::complete::line_ending, multi::separated_list1, IResult, Parser};
 
@@ -38,24 +45,21 @@ fn mix<F, const CHUNK_SIZE: usize>(vec: &mut RelocationVec<(i64, bool), CHUNK_SI
 where
     F: FnMut(&RelocationVec<(i64, bool), CHUNK_SIZE>),
 {
-    let mut remaining = vec.len();
-    let mut pos = vec.start();
+    let n = vec.len();
 
     // Inspect function used by the test cases.
     f(&vec);
 
-    while remaining > 0 {
+    for i in 0..n {
+        let pos = vec.initial_position(i).expect("position for elements");
         let &(value, relocated) = vec.get(&pos).unwrap();
 
         if !relocated {
             let target = vec.relocate(pos, value);
             vec.get_mut(&target).unwrap().1 = true;
-            remaining -= 1;
 
             f(&vec);
         }
-
-        pos = vec.advance(pos, 1);
     }
 }
 
@@ -96,10 +100,12 @@ mod collection {
     // Collection with 50% occupancy that allows items to be moved around efficiently.
     #[derive(Debug)]
     pub(super) struct RelocationVec<T, const CHUNK_SIZE: usize = 32> {
-        vec: Vec<[Option<T>; CHUNK_SIZE]>,
+        vec: Vec<[Option<(usize, T)>; CHUNK_SIZE]>,
 
         // Expensive to compute, never changes.
         len: usize,
+
+        initial_order: Vec<Position>,
     }
 
     impl<T: Debug, const CHUNK_SIZE: usize> RelocationVec<T, CHUNK_SIZE> {
@@ -117,17 +123,17 @@ mod collection {
             self.vec
                 .get(position.chunk)
                 .and_then(|chunk| chunk.get(position.pos))
-                .and_then(|item| item.as_ref())
+                .and_then(|o| o.as_ref().map(|(_, item)| item))
         }
 
         pub(super) fn get_mut(&mut self, position: &Position) -> Option<&mut T> {
             self.vec
                 .get_mut(position.chunk)
                 .and_then(|chunk| chunk.get_mut(position.pos))
-                .and_then(|item| item.as_mut())
+                .and_then(|o| o.as_mut().map(|(_, item)| item))
         }
 
-        fn get_mut_slot(&mut self, position: &Position) -> &mut Option<T> {
+        fn get_mut_slot(&mut self, position: &Position) -> &mut Option<(usize, T)> {
             &mut self.vec[position.chunk][position.pos]
         }
 
@@ -165,7 +171,8 @@ mod collection {
             let mut item = Some(self.get_mut_slot(&position).take().expect("valid position"));
             let mut pos = target;
 
-            while let Some(v) = item {
+            while let Some(v @ (index, _)) = item {
+                self.initial_order[index] = pos;
                 item = self.get_mut_slot(&pos).replace(v);
                 pos = pos.wrapping_succ(CHUNK_SIZE, self.vec.len());
             }
@@ -178,7 +185,11 @@ mod collection {
             self.vec
                 .iter()
                 .flat_map(|chunk| chunk.iter())
-                .filter_map(|item| item.as_ref())
+                .filter_map(|item| item.as_ref().map(|(_, item)| item))
+        }
+
+        pub(super) fn initial_position(&self, index: usize) -> Option<Position> {
+            self.initial_order.get(index).copied()
         }
     }
 
@@ -187,15 +198,20 @@ mod collection {
             let iter = iter.into_iter();
             let (min, _max) = iter.size_hint();
 
-            let mut vec: Vec<[Option<T>; CHUNK_SIZE]> =
+            let mut vec: Vec<[Option<(usize, T)>; CHUNK_SIZE]> =
                 std::iter::repeat_with(|| [(); CHUNK_SIZE].map(|_| None))
                     .take(2 * min / CHUNK_SIZE + 1)
                     .collect::<Vec<_>>();
 
             let (mut chunk, mut pos) = (0, 0);
+            let mut initial_order = Vec::new();
+
             let mut len = 0;
             for (i, item) in iter.into_iter().enumerate() {
-                vec[chunk][pos] = Some(item);
+                vec[chunk][pos] = Some((i, item));
+
+                initial_order.push(Position { chunk, pos });
+
                 pos += 1;
                 if pos * 2 >= CHUNK_SIZE {
                     pos = 0;
@@ -205,7 +221,11 @@ mod collection {
                 len = i + 1;
             }
 
-            Self { vec, len }
+            Self {
+                vec,
+                len,
+                initial_order,
+            }
         }
     }
 
@@ -222,7 +242,7 @@ mod collection {
     }
 
     pub(super) struct IntoIter<T, const CHUNK_SIZE: usize> {
-        iter: std::iter::Flatten<<Vec<[Option<T>; CHUNK_SIZE]> as IntoIterator>::IntoIter>,
+        iter: std::iter::Flatten<<Vec<[Option<(usize, T)>; CHUNK_SIZE]> as IntoIterator>::IntoIter>,
     }
 
     impl<T, const CHUNK_SIZE: usize> Iterator for IntoIter<T, CHUNK_SIZE> {
@@ -231,7 +251,7 @@ mod collection {
         fn next(&mut self) -> Option<Self::Item> {
             loop {
                 match self.iter.next() {
-                    Some(Some(item)) => return Some(item),
+                    Some(Some((_index, item))) => return Some(item),
                     Some(None) => continue,
                     None => return None,
                 }
@@ -254,7 +274,7 @@ mod collection {
 
             let recovered = iter
                 .clone()
-                .flat_map(|(chunk, len)| chunk.iter().take(len).map(|x| x.unwrap()))
+                .flat_map(|(chunk, len)| chunk.iter().take(len).map(|x| x.unwrap().1))
                 .collect::<Vec<_>>();
 
             assert_eq!(recovered, numbers);
@@ -427,12 +447,15 @@ mod tests {
 
     #[test]
     fn test_mix() {
-        let mut vec = [
+        let initial = vec![
             8, 2, 32, -41, 6, 29, -4, 6, -8, 8, -3, -8, 3, -5, 0, -1, 2, 1, 10, -9,
-        ]
-        .into_iter()
-        .map(|x| (x, false))
-        .collect::<RelocationVec<(i64, _), 4>>();
+        ];
+
+        let mut vec = initial
+            .iter()
+            .copied()
+            .map(|x| (x, false))
+            .collect::<RelocationVec<(i64, _), 4>>();
 
         let mut steps = vec![];
 
@@ -512,8 +535,20 @@ mod tests {
         }
 
         assert_eq!(
-            vec.into_iter().map(|(x, _)| x).collect::<Vec<_>>(),
+            vec.iter().copied().map(|(x, _)| x).collect::<Vec<_>>(),
             vec![2, 8, 6, 6, 29, 32, 10, 3, -9, 8, 0, -1, -8, -41, -8, 2, -4, 1, -5, -3]
         );
+
+        for (a, b) in initial.iter().enumerate().map(|(i, &a)| {
+            (
+                a,
+                vec.initial_position(i)
+                    .and_then(|pos| vec.get(&pos))
+                    .unwrap()
+                    .0,
+            )
+        }) {
+            assert_eq!(a, b);
+        }
     }
 }
