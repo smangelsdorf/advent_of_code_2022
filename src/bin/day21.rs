@@ -7,6 +7,7 @@ struct Unresolved;
 
 #[derive(Debug)]
 enum Monkey {
+    Human,
     YellingMonkey {
         value: i64,
     },
@@ -14,9 +15,18 @@ enum Monkey {
         refs: (u32, u32),
         operation: Operation,
     },
+    EquationMonkey {
+        equation: Equation,
+    },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
+struct Equation {
+    refs: (u32, u32),
+    operation: Operation,
+}
+
+#[derive(Debug, Clone, Copy)]
 enum Operation {
     Add,
     Mul,
@@ -26,14 +36,25 @@ enum Operation {
 
 pub fn main() {
     let mut monkeys = read_from_stdin_and_parse(parser::parse_input).unwrap();
-    println!("{:?}", monkeys);
 
     // b"root" as u32 (little endian)
     let root = 0x746f6f72;
-    println!("root: {:?}", monkeys.get(&root));
+    let humn = 0x6e6d7568;
 
     let mut stack: Vec<u32> = Vec::with_capacity(monkeys.len());
-    stack.push(root);
+
+    let root_monkey = monkeys.remove(&root).unwrap();
+    let (root_a, root_b) = match root_monkey {
+        Monkey::WaitingMonkey { refs: (a, b), .. } => {
+            stack.push(a);
+            stack.push(b);
+
+            (a, b)
+        }
+        _ => panic!("root monkey is not a waiting monkey"),
+    };
+
+    monkeys.insert(humn, Monkey::Human);
 
     while let Some(monkey) = stack.pop() {
         match monkeys.get(&monkey) {
@@ -50,25 +71,78 @@ pub fn main() {
                     };
                     monkeys.insert(monkey, Monkey::YellingMonkey { value });
                 }
+                Some((Monkey::YellingMonkey { .. }, Monkey::EquationMonkey { .. }))
+                | Some((Monkey::EquationMonkey { .. }, Monkey::YellingMonkey { .. }))
+                | Some((Monkey::Human { .. }, Monkey::YellingMonkey { .. }))
+                | Some((Monkey::YellingMonkey { .. }, Monkey::Human { .. })) => {
+                    monkeys.insert(
+                        monkey,
+                        Monkey::EquationMonkey {
+                            equation: Equation {
+                                refs: (*a, *b),
+                                operation: *operation,
+                            },
+                        },
+                    );
+                }
                 _ => {
                     stack.push(monkey);
                     stack.push(*a);
                     stack.push(*b);
-                    println!("stack length: {}", stack.len());
                 }
             },
             _ => {}
         }
     }
 
-    // Print root monkey value
-    println!(
-        "root monkey value: {:?}",
-        match monkeys.get(&root) {
-            Some(Monkey::YellingMonkey { value }) => value,
-            _ => panic!("root monkey is not a yelling monkey"),
+    let n = match Option::zip(monkeys.get(&root_a), monkeys.get(&root_b)) {
+        Some((&Monkey::YellingMonkey { value }, &Monkey::EquationMonkey { equation }))
+        | Some((&Monkey::EquationMonkey { equation }, &Monkey::YellingMonkey { value })) => {
+            solve(monkeys, value, equation)
         }
-    );
+        _ => panic!("expected an equation monkey and a yelling monkey"),
+    };
+
+    println!("{}", n);
+}
+
+fn solve(monkeys: HashMap<u32, Monkey>, target: i64, equation: Equation) -> i64 {
+    let Equation {
+        refs: (a, b),
+        operation,
+    } = equation;
+
+    match Option::zip(monkeys.get(&a), monkeys.get(&b)) {
+        Some((&Monkey::YellingMonkey { value }, &Monkey::EquationMonkey { equation })) => {
+            match operation {
+                Operation::Add => solve(monkeys, target - value, equation),
+                Operation::Sub => solve(monkeys, value - target, equation),
+                Operation::Mul => solve(monkeys, target / value, equation),
+                Operation::Div => solve(monkeys, value / target, equation),
+            }
+        }
+        Some((&Monkey::EquationMonkey { equation }, &Monkey::YellingMonkey { value })) => {
+            match operation {
+                Operation::Add => solve(monkeys, target - value, equation),
+                Operation::Sub => solve(monkeys, target + value, equation),
+                Operation::Mul => solve(monkeys, target / value, equation),
+                Operation::Div => solve(monkeys, target * value, equation),
+            }
+        }
+        Some((&Monkey::YellingMonkey { value }, Monkey::Human)) => match operation {
+            Operation::Add => target - value,
+            Operation::Sub => value - target,
+            Operation::Mul => target / value,
+            Operation::Div => value / target,
+        },
+        Some((Monkey::Human, &Monkey::YellingMonkey { value })) => match operation {
+            Operation::Add => target - value,
+            Operation::Sub => target + value,
+            Operation::Mul => target / value,
+            Operation::Div => target * value,
+        },
+        _ => panic!("expected an equation monkey and a yelling monkey"),
+    }
 }
 
 mod parser {
