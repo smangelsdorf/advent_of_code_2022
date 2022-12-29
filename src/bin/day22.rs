@@ -61,6 +61,8 @@ impl CubeLayout {
             }
         }
 
+        // Split out the "real" regions from the void regions, we
+        // actually don't need to know about the void regions.
         let (void_regions, cube_regions) = (0..vec.len() / dimension)
             .flat_map(|big_y| {
                 (0..max_width / dimension).map(move |big_x| {
@@ -85,6 +87,8 @@ impl CubeLayout {
                     == Tile::Void
             });
 
+        // It makes the logic simpler if we take the longest line we can find and
+        // assign it as the D-F-U-B faces (as far as possible).
         let mut longest_vertical_line = cube_regions
             .iter()
             .copied()
@@ -113,6 +117,16 @@ impl CubeLayout {
             .map(|r| r.x0y0.y)
             .collect::<BTreeSet<_>>();
 
+        // Only one region should be left on the left and right sides, and those
+        // regions should be the L and R faces.
+        //
+        // There's another possibility - a cube which wraps the left or right side
+        // all the way over, e.g.:
+        //    O
+        // OOOO
+        //    O
+        //
+        // That isn't handled here because I didn't need it.
         let left = remaining
             .iter()
             .copied()
@@ -144,6 +158,7 @@ impl CubeLayout {
         regions.insert(CubeSide::L, left);
         regions.insert(CubeSide::R, right);
 
+        // We have *at least* D, L and R, maybe more. We can infer the rest from that.
         let remaining_regions = cube_regions
             .iter()
             .copied()
@@ -214,6 +229,23 @@ impl CubeLayout {
             ] {
                 for facing in [Facing::North, Facing::East, Facing::South, Facing::West] {
                     if !edges.contains_key(&(face, facing)) {
+                        // Directly connected faces have a pair of facings that look like:
+                        //    -><-
+                        //
+                        // So, each time we traverse an edge the facing inverts if the
+                        // movement between them should be straight.
+                        //
+                        // When we are *missing* a connection, we can try to infer it by
+                        // looking for an L shape in the right orientation, i.e.:
+                        //  O  or  O
+                        // OO      OO
+                        //
+                        // If we find that shape, We know that the missing edge is formed
+                        // by folding the L shape so the two ends meet at the internal
+                        // corner.
+                        //
+                        // If we do this iteratively we fill in the rest of the edges,
+                        // eventually they'll all be connected for any cube.
                         let left = edges
                             .get(&(face, facing + Instruction::TurnLeft))
                             .and_then(|&(side, facing)| {
