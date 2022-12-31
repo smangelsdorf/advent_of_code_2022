@@ -1,3 +1,5 @@
+// For some reason this works for my input, but not for the sample input.
+
 use std::{collections::HashSet, time::Instant};
 
 use aoc::parser::read_from_stdin_and_parse;
@@ -54,21 +56,22 @@ impl Field {
     }
 }
 
-struct State<'a> {
-    field: &'a Field,
+struct State {
     positions: HashSet<(usize, usize)>,
     minute: u64,
+    start: (usize, usize),
+    target: (usize, usize),
 }
 
-impl State<'_> {
-    fn update<'a>(self, field: &'a Field) -> State<'a> {
+impl State {
+    fn update(self, field: &Field) -> State {
         let minute = self.minute;
         let (dim_x, dim_y) = field.dims;
 
         let positions: HashSet<(usize, usize)> = self
             .positions
-            .par_iter()
-            .flat_map_iter(|&(x, y)| {
+            .iter()
+            .flat_map(|&(x, y)| {
                 let left = if x == 0 { None } else { Some((x - 1, y)) };
                 let right = if x >= dim_x - 1 {
                     None
@@ -82,38 +85,51 @@ impl State<'_> {
                     Some((x, y + 1))
                 };
 
-                [left, right, up, down, Some((x, y))]
+                [left, right, up, down, Some((x, y)), Some(self.start)]
                     .into_iter()
                     .flatten()
-                    .filter_map(move |position| {
+                    .filter_map(|position| {
                         Some(position).filter(|position| field.is_clear(*position))
                     })
             })
             .collect();
 
         State {
-            field,
             positions,
             minute: minute + 1,
+            ..self
         }
     }
 
     fn is_done(&self) -> bool {
-        let x = self.field.end_col;
-        let y = self.field.dims.1 - 1;
-        self.positions.contains(&(x, y))
+        self.positions.contains(&self.target)
     }
 
     fn is_empty(&self) -> bool {
         self.positions.is_empty()
     }
+
+    fn reset_continue(self, start: (usize, usize), target: (usize, usize)) -> State {
+        let mut positions = self.positions;
+        positions.retain(|&pos| pos == start);
+        let minute = self.minute + 2;
+
+        State {
+            positions,
+            minute,
+            start,
+            target,
+        }
+    }
 }
 
-impl std::fmt::Debug for State<'_> {
+impl std::fmt::Debug for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("State")
             .field("positions", &self.positions)
             .field("minute", &self.minute)
+            .field("start", &self.start)
+            .field("target", &self.target)
             .finish()
     }
 }
@@ -154,16 +170,21 @@ impl InfiniteFields {
             .iter()
             .enumerate()
             .map(|(minute, field)| {
-                let positions = Some((field.start_col, 0))
+                let (_dim_x, dim_y) = field.dims;
+                let start = (field.start_col, 0);
+                let target = (field.end_col, dim_y - 1);
+
+                let positions = Some(start)
                     .filter(|&pos| field.is_clear(pos))
                     .into_iter()
                     .collect();
                 let minute = minute as u64;
 
                 State {
-                    field,
                     positions,
                     minute,
+                    start,
+                    target,
                 }
             })
             .find(|state| !state.positions.is_empty())
@@ -172,6 +193,12 @@ impl InfiniteFields {
 
 pub fn main() {
     let field = read_from_stdin_and_parse(parser::parse_input).unwrap();
+    let (_dim_x, dim_y) = field.dims;
+    let start_col = field.start_col;
+    let end_col = field.end_col;
+
+    let start_pos = (start_col, 0);
+    let end_pos = (end_col, dim_y - 1);
 
     let start = Instant::now();
     let fields = InfiniteFields::new(field);
@@ -186,13 +213,50 @@ pub fn main() {
 
     println!("initial state: {:?}", state);
 
-    while !state.is_done() && !state.is_empty() {
+    while !state.is_done() {
         let field = fields.get(state.minute as usize + 1);
         state = state.update(field);
+
+        if state.is_empty() {
+            println!("empty state at minute {}", state.minute + 1);
+            return;
+        }
     }
 
-    println!("Found solution at minute {}", state.minute + 1);
+    println!("Found initial solution at minute {}", state.minute + 1);
     println!("Took {:?}", start.elapsed());
+
+    state = state.reset_continue(end_pos, start_pos);
+    println!("first reset: {:?}", state);
+
+    while !state.is_done() {
+        let field = fields.get(state.minute as usize + 1);
+        state = state.update(field);
+
+        if state.is_empty() {
+            println!("empty state at minute {}", state.minute + 1);
+            return;
+        }
+    }
+
+    println!("Found return solution at minute {}", state.minute + 1);
+    println!("Running total {:?}", start.elapsed());
+
+    state = state.reset_continue(start_pos, end_pos);
+    println!("second reset: {:?}", state);
+
+    while !state.is_done() {
+        let field = fields.get(state.minute as usize + 1);
+        state = state.update(field);
+
+        if state.is_empty() {
+            println!("empty state at minute {}", state.minute + 1);
+            return;
+        }
+    }
+
+    println!("Found final solution at minute {}", state.minute + 1);
+    println!("Final total {:?}", start.elapsed());
 }
 
 mod parser {
